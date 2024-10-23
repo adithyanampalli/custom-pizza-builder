@@ -1,44 +1,42 @@
-# Import python packages
 import streamlit as st
 from snowflake.snowpark.context import get_active_session
+from snowflake.snowpark.functions import col
 
-# Write directly to the app
-st.title("Example Streamlit App :balloon:")
-st.write(
-    """Replace this example with your own code!
-    **And if you're new to Streamlit,** check
-    out our easy-to-follow guides at
-    [docs.streamlit.io](https://docs.streamlit.io).
-    """
-)
+# App title
+st.title("🍕 Custom Pizza Builder 🍕")
+st.write("Build your perfect pizza by choosing toppings, size, and crust!")
 
-# Get the current credentials
+# Snowflake session
 session = get_active_session()
 
-# Use an interactive slider to get user input
-hifives_val = st.slider(
-    "Number of high-fives in Q3",
-    min_value=0,
-    max_value=90,
-    value=60,
-    help="Use this to enter the number of high-fives you gave in Q3",
-)
+# Fetch available pizza options (toppings, crusts, sizes)
+toppings_df = session.table("pizza_orders.public.pizza_options").filter(col("INGREDIENT_TYPE") == 'Topping').select(col('INGREDIENT_NAME')).to_pandas()
+crusts_df = session.table("pizza_orders.public.pizza_options").filter(col("INGREDIENT_TYPE") == 'Crust').select(col('INGREDIENT_NAME')).to_pandas()
+sizes_df = session.table("pizza_orders.public.pizza_options").filter(col("INGREDIENT_TYPE") == 'Size').select(col('INGREDIENT_NAME')).to_pandas()
 
-#  Create an example dataframe
-#  Note: this is just some dummy data, but you can easily connect to your Snowflake data
-#  It is also possible to query data using raw SQL using session.sql() e.g. session.sql("select * from table")
-created_dataframe = session.create_dataframe(
-    [[50, 25, "Q1"], [20, 35, "Q2"], [hifives_val, 30, "Q3"]],
-    schema=["HIGH_FIVES", "FIST_BUMPS", "QUARTER"],
-)
+# User inputs
+name = st.text_input("Enter your name for the order")
+chosen_toppings = st.multiselect('Choose your toppings:', toppings_df['INGREDIENT_NAME'], max_selections=5)
+chosen_crust = st.radio('Choose your crust:', crusts_df['INGREDIENT_NAME'])
+chosen_size = st.radio('Choose your pizza size:', sizes_df['INGREDIENT_NAME'])
 
-# Execute the query and convert it into a Pandas dataframe
-queried_data = created_dataframe.to_pandas()
+# Order submission
+if st.button('Submit Pizza Order'):
+    if not name:
+        st.error("Please enter your name before submitting!")
+    else:
+        toppings_string = ', '.join(chosen_toppings)
+        
+        # Create SQL statement to insert order
+        insert_order_query = f"""
+        INSERT INTO pizza_orders.public.pizza_orders (CUSTOMER_NAME, INGREDIENTS, SIZE, CRUST)
+        VALUES ('{name}', '{toppings_string}', '{chosen_size}', '{chosen_crust}')
+        """
+        session.sql(insert_order_query).collect()  # Submit the order to Snowflake
+        
+        st.success(f"Thanks, {name}! Your pizza is on the way 🍕")
 
-# Create a simple bar chart
-# See docs.streamlit.io for more types of charts
-st.subheader("Number of high-fives")
-st.bar_chart(data=queried_data, x="QUARTER", y="HIGH_FIVES")
-
-st.subheader("Underlying data")
-st.dataframe(queried_data, use_container_width=True)
+# View pending orders
+if st.checkbox('Show Pending Orders'):
+    pending_orders = session.table('pizza_orders.public.pizza_orders').filter(col('ORDER_FILLED') == False).select(col('CUSTOMER_NAME'), col('INGREDIENTS')).to_pandas()
+    st.dataframe(pending_orders)
