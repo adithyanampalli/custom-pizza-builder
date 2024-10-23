@@ -1,3 +1,6 @@
+pip install -r requirements.txt
 streamlit
 snowflake-snowpark-python
 pandas
+streamlit run app.py
+
